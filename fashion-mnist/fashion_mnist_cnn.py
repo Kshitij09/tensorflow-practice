@@ -1,21 +1,20 @@
+import math
 import tensorflow as tf
 import tensorflow_datasets as tfds
+import tqdm.auto
+from keras.backend.tensorflow_backend import set_session
+from tensorflow import keras
+from tensorflow.python.keras.callbacks import TensorBoard
 
 tf.logging.set_verbosity(tf.logging.ERROR)
-# Improve progress bar display
-import tqdm.auto
 
+# Improve progress bar display
 tqdm.tqdm = tqdm.auto.tqdm
-import matplotlib.pyplot as plt
-import math
-from tensorflow.python import keras
-from keras.layers import *
-# from keras.layers import *
-from keras.models import Model
-from keras.backend.tensorflow_backend import set_session
+
+# tf.enable_eager_execution()
 
 # limit program eating up all the GPU memory
-tf.enable_eager_execution()
+
 config = tf.ConfigProto()
 # config.gpu_options.allow_growth = True
 per_process_gpu_memory_fraction = 0.4
@@ -49,57 +48,32 @@ train_dataset = train_dataset.map(normalize)
 test_dataset = test_dataset.map(normalize)
 
 
-def preview_image():
-    for image, label in test_dataset.take(1):
-        break
-    image = image.numpy().reshape((28, 28))
-
-    plt.figure()
-    plt.imshow(image, cmap=plt.cm.binary)
-    plt.colorbar()
-    plt.grid(False)
-    plt.show()
-
-
-class LeNet(Model):
+class SimpleNet(keras.Model):
 
     def __init__(self, num_classes):
-        super(LeNet, self).__init__()
+        super(SimpleNet, self).__init__()
         self.num_classes = num_classes
-        self.conv1 = Conv2D(6, kernel_size=(5, 5), strides=(1, 1), activation='relu', input_shape=(28, 28, 1))
-        self.maxpool = MaxPooling2D((2, 2), strides=2)
-        self.conv2 = Conv2D(16, kernel_size=(5, 5), strides=(1, 1), activation='relu')
-        self.flatten = Flatten()
-        self.dense1 = Dense(400, activation='relu')
-        self.dense2 = Dense(120, activation='relu')
-        self.dense3 = Dense(84, activation='relu')
-        self.dense4 = Dense(self.num_classes, activation='softmax')
+        self.conv1 = keras.layers.Conv2D(32, (3, 3), padding='same', input_shape=(28, 28, 1), activation=tf.nn.relu,
+                                         name="conv1")
+        self.pool1 = keras.layers.MaxPool2D((2, 2), strides=2, name='pool1')
+        self.conv2 = keras.layers.Conv2D(64, (3, 3), padding='same', activation=tf.nn.relu, name='conv2')
+        self.pool2 = keras.layers.MaxPooling2D((2, 2), strides=2, name='pool2')
+        self.flatten = keras.layers.Flatten(name='flatten')
+        self.dense1 = keras.layers.Dense(128, activation=tf.nn.relu, name='dense1')
+        self.dense2 = keras.layers.Dense(10, activation=tf.nn.softmax, name='dense2')
 
     def call(self, inputs, training=None, mask=None):
         x = self.conv1(inputs)
-        x = self.maxpool(x)
+        x = self.pool1(x)
         x = self.conv2(x)
-        x = self.maxpool(x)
         x = self.flatten(x)
         x = self.dense1(x)
-        x = self.dense2(x)
-        x = self.dense3(x)
-        x = self.dense4(x)
+        output = self.dense2(x)
 
-        return x
+        return output
 
 
-model = keras.Sequential([
-    tf.keras.layers.Conv2D(32, (3, 3), padding='same', input_shape=(28, 28, 1), activation=tf.nn.relu),
-    tf.keras.layers.MaxPooling2D((2, 2), strides=2),
-    tf.keras.layers.Conv2D(64, (3, 3), padding='same', activation=tf.nn.relu),
-    tf.keras.layers.MaxPooling2D((2, 2), strides=2),
-    tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(128, activation=tf.nn.relu),
-    tf.keras.layers.Dense(10, activation=tf.nn.softmax)
-])
-
-model.summary()
+model = SimpleNet(10)
 
 BATCH_SIZE = 32
 num_epochs = 5
@@ -107,22 +81,16 @@ train_dataset = train_dataset.repeat().shuffle(train_examples).batch(BATCH_SIZE)
 test_dataset = test_dataset.batch(BATCH_SIZE)
 
 optimizer = tf.train.AdamOptimizer(0.001)
-# model = LeNet(num_classes=10)
+
 model.compile(optimizer='adam',
-              loss=keras.losses.sparse_categorical_crossentropy,
+              loss=tf.keras.losses.sparse_categorical_crossentropy,
               metrics=['accuracy'])
 
-# keep track for plotting
-# loss_history = []
-# accuracy_history = []
-#
-# global_step = tf.train.get_or_create_global_step()
-# model_name = 'LeNet-maxpool'
-# tensorboard = TensorBoard(log_dir='./logs/{}'.format(model_name),
-#                           write_graph=True)
+model_name = 'ConvNet-maxpool3'
+tensorboard = TensorBoard(log_dir="logs/{}".format(model_name), write_graph=True)
 
 model.fit(train_dataset, epochs=5,
-          steps_per_epoch=math.ceil(train_examples / BATCH_SIZE))
+          steps_per_epoch=math.ceil(train_examples / BATCH_SIZE), callbacks=[tensorboard])
 
 test_loss, test_accuracy = model.evaluate(test_dataset, steps=math.ceil(test_examples / 32))
 print('Accuracy on test dataset:', test_accuracy)
